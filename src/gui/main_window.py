@@ -11,8 +11,8 @@ import multiprocessing
 from pathlib import Path
 
 # Importar módulos para HU03
-from src.gui.progress_dialog import ProgressDialog
-from src.compression.parallel_compressor import ParallelCompressor
+from gui.progress_dialog import ProgressDialog
+from compression.parallel_compressor import ParallelCompressor
 
 
 class MainWindow:
@@ -24,6 +24,7 @@ class MainWindow:
         
         # Variables para almacenar información del archivo
         self.selected_file_path = tk.StringVar()
+        self.output_file_path = tk.StringVar()  # HU06: Ruta de destino
         self.file_info = {}
         
         # Variables para configuración HU02
@@ -63,9 +64,28 @@ class MainWindow:
                                         state="readonly", width=50)
         self.file_path_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5)
         
+        # HU06: Sección de destino del archivo comprimido
+        dest_frame = ttk.LabelFrame(main_frame, text="📁 Archivo de Destino", padding="10")
+        dest_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
+        dest_frame.columnconfigure(1, weight=1)
+        
+        # Botón para seleccionar destino
+        self.select_dest_button = ttk.Button(dest_frame, text="💾 Elegir Destino", 
+                                           command=self.select_output_file, state="disabled")
+        self.select_dest_button.grid(row=0, column=0, padx=(0, 10), pady=5)
+        
+        # Campo de texto para mostrar la ruta de destino
+        self.output_path_entry = ttk.Entry(dest_frame, textvariable=self.output_file_path, 
+                                         state="readonly", width=50)
+        self.output_path_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5)
+        
+        # Información sobre la extensión
+        ttk.Label(dest_frame, text="💡 El archivo se guardará con extensión .pz automáticamente", 
+                 foreground="gray", font=("Arial", 9)).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=2)
+        
         # Información del archivo
         info_frame = ttk.LabelFrame(main_frame, text="Información del Archivo", padding="10")
-        info_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
+        info_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
         info_frame.columnconfigure(1, weight=1)
         
         # Labels para mostrar información
@@ -88,7 +108,7 @@ class MainWindow:
         
         # Sección de configuración de hilos (HU02)
         config_frame = ttk.LabelFrame(main_frame, text="⚙️ Configuración de Compresión", padding="10")
-        config_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
+        config_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 20))
         config_frame.columnconfigure(2, weight=1)
         
         # Número de hilos
@@ -126,7 +146,7 @@ class MainWindow:
         
         # Botones de acción
         action_frame = ttk.Frame(main_frame)
-        action_frame.grid(row=4, column=0, columnspan=3, pady=20)
+        action_frame.grid(row=5, column=0, columnspan=3, pady=20)
         
         self.compress_button = ttk.Button(action_frame, text="🗜️ Comprimir", 
                                          command=self.compress_file, state="disabled")
@@ -153,7 +173,12 @@ class MainWindow:
                 if self.validate_file(file_path):
                     self.selected_file_path.set(file_path)
                     self.display_file_info(file_path)
-                    self.compress_button.config(state="normal")
+                    
+                    # HU06: Habilitar botón de selección de destino
+                    self.select_dest_button.config(state="normal")
+                    
+                    # HU06: Sugerir nombre de destino automáticamente
+                    self.suggest_output_filename(file_path)
                 else:
                     messagebox.showerror("Error", "El archivo seleccionado no es válido o no se puede acceder a él.")
                     
@@ -238,9 +263,17 @@ class MainWindow:
             messagebox.showerror("Error", "No hay archivo seleccionado para comprimir.")
             return
         
+        # HU06: Verificar que se haya seleccionado destino
+        if not self.output_file_path.get():
+            messagebox.showerror("Error", "Debe seleccionar la ubicación de destino para el archivo comprimido.")
+            return
+        
         try:
             # Obtener configuración de compresión
             config = self.get_compression_config()
+            
+            # HU06: Agregar ruta de destino a la configuración
+            config['output_path'] = self.output_file_path.get()
             
             # Crear y mostrar diálogo de progreso
             progress_dialog = ProgressDialog(self.root, config)
@@ -267,11 +300,13 @@ class MainWindow:
     def clear_selection(self):
         """Limpia la selección actual"""
         self.selected_file_path.set("")
+        self.output_file_path.set("")  # HU06: Limpiar destino
         self.name_label.config(text="")
         self.size_label.config(text="")
         self.location_label.config(text="")
         self.status_label.config(text="Ningún archivo seleccionado", foreground="gray")
         self.compress_button.config(state="disabled")
+        self.select_dest_button.config(state="disabled")  # HU06: Deshabilitar destino
         self.file_info = {}
     
     # Métodos para HU02 - Configuración de hilos
@@ -322,6 +357,103 @@ class MainWindow:
             'max_threads': self.max_threads,
             'file_info': self.file_info
         }
+    
+    def select_output_file(self):
+        """HU06: Abre el diálogo para seleccionar la ruta de destino del archivo comprimido"""
+        if not self.file_info:
+            messagebox.showerror("Error", "Primero debe seleccionar un archivo para comprimir.")
+            return
+        
+        try:
+            # Generar nombre sugerido basado en el archivo original
+            original_path = Path(self.file_info['path'])
+            suggested_name = f"{original_path.stem}_comprimido.pz"
+            initial_dir = original_path.parent
+            
+            # Mostrar diálogo de guardar archivo
+            output_path = filedialog.asksaveasfilename(
+                title="Guardar archivo comprimido como...",
+                defaultextension=".pz",
+                initialdir=str(initial_dir),
+                initialfile=suggested_name,
+                filetypes=[
+                    ("Archivos comprimidos", "*.pz"),
+                    ("Todos los archivos", "*.*")
+                ]
+            )
+            
+            if output_path:
+                # HU06: Validar permisos de escritura
+                if self.validate_output_path(output_path):
+                    # Asegurar que tenga la extensión .pz
+                    if not output_path.endswith('.pz'):
+                        output_path = output_path + '.pz'
+                    
+                    self.output_file_path.set(output_path)
+                    self.update_compression_button_state()
+                    
+                    # Mostrar confirmación
+                    messagebox.showinfo("Destino Seleccionado", 
+                                      f"El archivo comprimido se guardará en:\n{output_path}")
+                else:
+                    messagebox.showerror("Error de Permisos", 
+                                       "No tiene permisos de escritura en la ubicación seleccionada.")
+                    
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al seleccionar destino: {str(e)}")
+    
+    def validate_output_path(self, output_path):
+        """HU06: Valida que se pueda escribir en la ruta de destino"""
+        try:
+            output_dir = Path(output_path).parent
+            
+            # Verificar que el directorio existe
+            if not output_dir.exists():
+                # Intentar crear el directorio
+                output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Verificar permisos de escritura
+            if not os.access(output_dir, os.W_OK):
+                return False
+            
+            # Verificar si el archivo ya existe y si se puede sobrescribir
+            if Path(output_path).exists():
+                if not os.access(output_path, os.W_OK):
+                    return False
+                
+                # Confirmar sobrescritura
+                result = messagebox.askyesno("Archivo Existente", 
+                                           f"El archivo '{Path(output_path).name}' ya existe.\n"
+                                           "¿Desea sobrescribirlo?")
+                return result
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error validando ruta de salida: {e}")
+            return False
+    
+    def update_compression_button_state(self):
+        """HU06: Actualiza el estado del botón de compresión según las selecciones"""
+        if self.file_info and self.output_file_path.get():
+            self.compress_button.config(state="normal")
+        else:
+            self.compress_button.config(state="disabled")
+    
+    def suggest_output_filename(self, input_path):
+        """HU06: Sugiere automáticamente un nombre de archivo de destino"""
+        try:
+            original_path = Path(input_path)
+            suggested_name = f"{original_path.stem}_comprimido.pz"
+            suggested_full_path = original_path.parent / suggested_name
+            
+            # Validar que se puede escribir en esa ubicación
+            if self.validate_output_path(str(suggested_full_path)):
+                self.output_file_path.set(str(suggested_full_path))
+                self.update_compression_button_state()
+            
+        except Exception as e:
+            print(f"Error sugiriendo nombre de archivo: {e}")
     
     def run(self):
         """Ejecuta la aplicación"""

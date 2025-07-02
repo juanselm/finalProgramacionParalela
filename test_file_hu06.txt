@@ -1,0 +1,19 @@
+Este es un archivo de prueba para HU06.
+
+Contenido de ejemplo para probar la selección personalizada de destino:
+- Línea 1 con contenido variado
+- Línea 2 para hacer el archivo más interesante
+- Línea 3 con más texto
+
+El archivo debe comprimirse y guardarse en la ubicación que elija el usuario
+con la extensión .pz personalizada.
+
+Repetimos contenido para hacer el archivo más grande:
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+0123456789
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+0123456789
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+0123456789
+
+Final del archivo de prueba para HU06.

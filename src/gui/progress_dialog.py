@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 import threading
 import time
+from pathlib import Path
 
 
 class ProgressDialog:
@@ -67,6 +68,11 @@ class ProgressDialog:
         ttk.Label(info_frame, text=f"Archivo: {file_info['name']}").pack(anchor=tk.W)
         ttk.Label(info_frame, text=f"Tamaño: {file_info['size_formatted']}").pack(anchor=tk.W)
         ttk.Label(info_frame, text=f"Hilos: {self.config['threads']}").pack(anchor=tk.W)
+        
+        # HU06: Mostrar destino si está configurado
+        if 'output_path' in self.config:
+            output_name = Path(self.config['output_path']).name
+            ttk.Label(info_frame, text=f"Destino: {output_name}").pack(anchor=tk.W)
         
         # Estado actual
         self.phase_label = ttk.Label(main_frame, textvariable=self.phase_var, 
@@ -130,7 +136,12 @@ class ProgressDialog:
                 self.dialog.after(0, self.compression_error, str(e))
     
     def get_output_filename(self):
-        """Genera el nombre del archivo de salida"""
+        """HU06: Obtiene el nombre del archivo de salida desde la configuración"""
+        # Si se especificó una ruta de destino en la configuración, usarla
+        if 'output_path' in self.config:
+            return self.config['output_path']
+        
+        # Fallback al comportamiento anterior
         input_path = self.config['file_info']['path']
         return input_path + ".parzip"
     

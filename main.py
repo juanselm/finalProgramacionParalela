@@ -20,6 +20,7 @@ def main():
         print("📋 HU03: Compresión paralela con progreso visual ✅")
         print("📋 HU04: División de archivos en bloques configurables ✅")
         print("📋 HU05: Almacenamiento temporal y ensamblaje ordenado ✅")
+        print("📋 HU06: Selección personalizada de destino con extensión .pz ✅")
         
         # Crear y ejecutar la aplicación
         app = MainWindow()
