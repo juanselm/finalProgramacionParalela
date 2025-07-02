@@ -1,0 +1,34 @@
+Este es un archivo de prueba para probar la funcionalidad de compresión paralela.
+El archivo contiene múltiples líneas de texto para generar suficiente contenido.
+Línea 3: Datos de prueba para compresión
+Línea 4: Más contenido para el archivo de prueba
+Línea 5: Testing compression functionality
+Línea 6: Parallel compression test data
+Línea 7: Esta línea contiene más caracteres para aumentar el tamaño
+Línea 8: Continuamos agregando contenido al archivo
+Línea 9: Datos adicionales para la prueba de compresión
+Línea 10: Final del archivo de prueba
+
+Repetimos el contenido para hacer el archivo más grande:
+Este es un archivo de prueba para probar la funcionalidad de compresión paralela.
+El archivo contiene múltiples líneas de texto para generar suficiente contenido.
+Línea 3: Datos de prueba para compresión
+Línea 4: Más contenido para el archivo de prueba
+Línea 5: Testing compression functionality
+Línea 6: Parallel compression test data
+Línea 7: Esta línea contiene más caracteres para aumentar el tamaño
+Línea 8: Continuamos agregando contenido al archivo
+Línea 9: Datos adicionales para la prueba de compresión
+Línea 10: Final del archivo de prueba
+
+Y una vez más para crear más contenido:
+Este es un archivo de prueba para probar la funcionalidad de compresión paralela.
+El archivo contiene múltiples líneas de texto para generar suficiente contenido.
+Línea 3: Datos de prueba para compresión
+Línea 4: Más contenido para el archivo de prueba
+Línea 5: Testing compression functionality
+Línea 6: Parallel compression test data
+Línea 7: Esta línea contiene más caracteres para aumentar el tamaño
+Línea 8: Continuamos agregando contenido al archivo
+Línea 9: Datos adicionales para la prueba de compresión
+Línea 10: Final del archivo de prueba

@@ -10,6 +10,10 @@ import os
 import multiprocessing
 from pathlib import Path
 
+# Importar módulos para HU03
+from src.gui.progress_dialog import ProgressDialog
+from src.compression.parallel_compressor import ParallelCompressor
+
 
 class MainWindow:
     def __init__(self):
@@ -199,8 +203,7 @@ class MainWindow:
             self.location_label.config(text=str(path.parent))
             self.status_label.config(text="✅ Archivo válido y listo para comprimir", 
                                    foreground="green")
-            
-            # Guardar información del archivo
+              # Guardar información del archivo
             self.file_info = {
                 'path': file_path,
                 'name': path.name,
@@ -230,15 +233,36 @@ class MainWindow:
         return f"{size:.2f} {size_names[i]}"
     
     def compress_file(self):
-        """Función placeholder para comprimir archivo (incluye configuración HU02)"""
-        if self.file_info:
+        """Inicia el proceso de compresión paralela con interfaz de progreso (HU03)"""
+        if not self.file_info:
+            messagebox.showerror("Error", "No hay archivo seleccionado para comprimir.")
+            return
+        
+        try:
+            # Obtener configuración de compresión
             config = self.get_compression_config()
-            messagebox.showinfo("Configuración de Compresión", 
-                              f"Archivo seleccionado: {self.file_info['name']}\n"
-                              f"Tamaño: {self.file_info['size_formatted']}\n"
-                              f"Hilos configurados: {config['threads']}\n"
-                              f"Núcleos disponibles: {config['max_threads']}\n\n"
-                              f"La compresión paralela se implementará en HU03.")
+            
+            # Crear y mostrar diálogo de progreso
+            progress_dialog = ProgressDialog(self.root, config)
+            
+            # Crear instancia del compresor
+            compressor = ParallelCompressor()
+            
+            # Crear función de compresión que usa la configuración
+            def compress_with_config(input_file, output_file, progress_callback):
+                # Configurar número de hilos en el compresor
+                return compressor.compress_file_with_threads(
+                    input_file=input_file,
+                    output_file=output_file,
+                    num_threads=config['threads'],
+                    progress_callback=progress_callback
+                )
+            
+            # Iniciar compresión
+            progress_dialog.start_compression(compress_with_config)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error iniciando compresión: {str(e)}")
     
     def clear_selection(self):
         """Limpia la selección actual"""
