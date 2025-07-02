@@ -40,6 +40,21 @@ Dividir un archivo grande en bloques y comprimir cada bloque en paralelo utiliza
 
 ---
 
+## 🧩 Estructura de archivos
+
+```
+parzip/
+├── main.c             # Maneja argumentos y organiza flujo
+├── compressor.c       # Lógica de compresión
+├── compressor.h
+├── utils.c            # Lectura/escritura de archivos
+├── utils.h
+├── Makefile
+└── README.md
+```
+
+---
+
 ## 🧪 Ejemplo de ejecución
 
 ```bash

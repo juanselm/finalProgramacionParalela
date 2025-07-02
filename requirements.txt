@@ -1,0 +1,27 @@
+# Requisitos del Proyecto
+
+## Python
+- Python 3.7 o superior
+- tkinter (incluido por defecto en Python)
+
+## Dependencias
+- pathlib (incluido en Python 3.4+)
+- tempfile (biblioteca estándar)
+- unittest (biblioteca estándar)
+
+## Instalación
+No se requieren dependencias externas para la HU01.
+
+## Ejecución
+```bash
+# Ejecutar la aplicación
+python main.py
+
+# Ejecutar pruebas
+python tests/test_hu01.py
+```
+
+## Próximas dependencias (HU futuras)
+- zlib (compresión)
+- threading o multiprocessing (paralelización)
+- time (medición de rendimiento)
