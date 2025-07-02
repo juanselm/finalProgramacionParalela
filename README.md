@@ -37,7 +37,12 @@ Un compresor de archivos con interfaz gráfica que utiliza programación paralel
 ### **Requisitos**
 ```bash
 Python 3.12+
-tkinter (incluido en Python estándar)
+# Todas las dependencias son bibliotecas estándar de Python:
+# - tkinter (incluido en Python estándar)
+# - threading (biblioteca estándar) 
+# - zlib (biblioteca estándar)
+# - pathlib (biblioteca estándar)
+# - tempfile (biblioteca estándar)
 ```
 
 ### **Instalación**
@@ -46,8 +51,8 @@ tkinter (incluido en Python estándar)
 git clone <repository-url>
 cd finalProgramacionParalela
 
-# Instalar dependencias
-pip install -r requirements.txt
+# ¡No se requieren dependencias externas!
+# Todas las librerías utilizadas son parte de Python estándar
 ```
 
 ### **Ejecución**
