@@ -15,7 +15,8 @@ def main():
     """Función principal"""
     try:
         print("🗂️ Iniciando Compresor de Archivos Paralelo...")
-        print("📋 HU01: Interfaz gráfica para selección de archivos")
+        print("📋 HU01: Interfaz gráfica para selección de archivos ✅")
+        print("📋 HU02: Configuración de número de hilos ✅")
         
         # Crear y ejecutar la aplicación
         app = MainWindow()

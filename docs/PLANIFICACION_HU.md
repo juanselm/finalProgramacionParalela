@@ -6,14 +6,12 @@
 - Archivos: `main.py`, `src/gui/main_window.py`, `tests/test_hu01.py`
 - Funcionalidades: Interfaz gráfica, selección de archivos, validación
 
-## 🔄 HU02 - EN PREPARACIÓN
-**Configuración de parámetros de compresión**
-- Como usuario, quiero configurar los parámetros de compresión para optimizar el proceso
-- Criterios de aceptación:
-  - Seleccionar número de hilos (1-16)
-  - Configurar tamaño de bloque (512KB, 1MB, 2MB, 4MB, 8MB)
-  - Elegir algoritmo de compresión (zlib, gzip, bz2)
-- Archivos preparados: `src/gui/compression_config.py`
+## ✅ HU02 - COMPLETADA
+**Configuración de número de hilos**
+- Estado: ✅ COMPLETADA
+- Archivos: `src/gui/main_window.py` (actualizado), `tests/test_hu02.py`
+- Funcionalidades: Slider de hilos, validación de núcleos, retroalimentación visual
+- Pruebas: 8/8 ✅ pasando
 
 ## 📋 HU03 - EN PREPARACIÓN
 **Compresión paralela con progreso visual**
