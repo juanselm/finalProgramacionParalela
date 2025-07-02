@@ -2,15 +2,18 @@
 Módulo de compresión paralela
 HU03: Compresión paralela con progreso visual
 HU04: División de archivos en bloques de tamaño fijo
+HU05: Almacenamiento temporal y ensamblaje de bloques comprimidos
 """
 
 import threading
 import time
 import zlib
 import os
+import json
 from pathlib import Path
 from queue import Queue
 from .block_manager import FileBlockManager
+from .temporary_storage import TemporaryBlockStorage, CompressionAlgorithm
 
 
 class ParallelCompressor:
@@ -23,6 +26,9 @@ class ParallelCompressor:
         # HU04: Integración con FileBlockManager para gestión de bloques
         self.block_manager = FileBlockManager(block_size)
         self.compression_stats = {}
+        # HU05: Almacenamiento temporal para bloques comprimidos
+        self.temp_storage = None
+        self.compression_algorithm = CompressionAlgorithm.ZLIB
     
     def set_block_size(self, block_size: int):
         """
@@ -35,6 +41,18 @@ class ParallelCompressor:
         """Obtiene el tamaño de bloque actual"""
         return self.block_manager.block_size
     
+    def set_compression_algorithm(self, algorithm: CompressionAlgorithm):
+        """
+        HU05: Configura el algoritmo de compresión (zlib o RLE)
+        """
+        self.compression_algorithm = algorithm
+    
+    def get_compression_algorithm(self) -> CompressionAlgorithm:
+        """
+        HU05: Obtiene el algoritmo de compresión actual
+        """
+        return self.compression_algorithm
+    
     def compress_file(self, input_file, output_file, progress_callback=None):
         """Comprime un archivo usando múltiples hilos (4 hilos por defecto)"""
         return self.compress_file_with_threads(input_file, output_file, 4, progress_callback)
@@ -45,6 +63,9 @@ class ParallelCompressor:
             self.is_compressing = True
             self.cancel_requested = False
             
+            # HU05: Inicializar almacenamiento temporal
+            self.temp_storage = TemporaryBlockStorage()
+            
             # Obtener configuración desde el callback
             if progress_callback:
                 progress_callback("Iniciando compresión...", 0, "🚀 Iniciando")
@@ -54,18 +75,30 @@ class ParallelCompressor:
             if self.cancel_requested:
                 return False
             
+            # HU05: Configurar información del archivo en almacenamiento temporal
+            self.temp_storage.set_file_info(input_file, output_file, len(blocks))
+            
             # Comprimir bloques en paralelo con distribución mejorada
             compressed_blocks = self._compress_blocks_parallel_improved(blocks, num_threads, progress_callback)
             if self.cancel_requested:
                 return False
             
-            # Escribir archivo comprimido
-            success = self._write_compressed_file(compressed_blocks, output_file, progress_callback)
+            # HU05: Escribir archivo comprimido con ensamblaje de bloques temporales
+            success = self._write_compressed_file_from_storage(output_file, progress_callback)
+            
+            # HU05: Limpiar almacenamiento temporal
+            if self.temp_storage:
+                self.temp_storage.cleanup()
+                self.temp_storage = None
             
             self.is_compressing = False
             return success
             
         except Exception as e:
+            # HU05: Limpiar almacenamiento temporal en caso de error
+            if self.temp_storage:
+                self.temp_storage.cleanup()
+                self.temp_storage = None
             self.is_compressing = False
             raise e
     
@@ -177,24 +210,33 @@ class ParallelCompressor:
     
     def _compress_thread_worker_improved(self, blocks, result_array, progress_queue, thread_id):
         """
-        HU04: Worker mejorado para comprimir bloques en un hilo
-        Incluye validación de integridad y métricas detalladas
+        HU05: Worker mejorado para comprimir bloques en un hilo
+        Cada hilo comprime un bloque y lo almacena temporalmente
         """
         for block in blocks:
             if self.cancel_requested:
                 break
                 
             try:
-                # Comprimir bloque usando zlib
+                # HU05: Comprimir bloque usando el algoritmo configurado (zlib por defecto)
                 original_data = block['data']
-                compressed_data = zlib.compress(original_data, level=6)
+                
+                if self.compression_algorithm == CompressionAlgorithm.ZLIB:
+                    compressed_data = zlib.compress(original_data, level=6)
+                else:
+                    # RLE como alternativa (implementación simple)
+                    compressed_data = self._compress_rle(original_data)
                 
                 # Calcular métricas de compresión
                 compression_ratio = (len(compressed_data) / len(original_data)) * 100
                 
                 # Validar integridad de compresión
                 try:
-                    decompressed_test = zlib.decompress(compressed_data)
+                    if self.compression_algorithm == CompressionAlgorithm.ZLIB:
+                        decompressed_test = zlib.decompress(compressed_data)
+                    else:
+                        decompressed_test = self._decompress_rle(compressed_data)
+                        
                     if decompressed_test != original_data:
                         raise ValueError("Error de integridad en compresión")
                 except Exception as e:
@@ -202,6 +244,18 @@ class ParallelCompressor:
                     compressed_data = original_data
                     compression_ratio = 100.0
                 
+                # HU05: Almacenar bloque comprimido en almacenamiento temporal
+                if self.temp_storage:
+                    block_path = self.temp_storage.store_compressed_block(
+                        block['id'], 
+                        compressed_data,
+                        block['size'],
+                        compression_ratio,
+                        thread_id,
+                        block['checksum']
+                    )
+                
+                # Mantener compatibilidad con result_array
                 result_array[block['id']] = {
                     'id': block['id'],
                     'compressed_data': compressed_data,
@@ -249,6 +303,112 @@ class ParallelCompressor:
                         'original_size': block['size'],
                         'compression_ratio': 100.0
                     })
+    
+    def _compress_rle(self, data: bytes) -> bytes:
+        """
+        HU05: Implementación simple de RLE (Run-Length Encoding)
+        Como alternativa a zlib
+        """
+        if not data:
+            return b''
+        
+        compressed = []
+        current_byte = data[0]
+        count = 1
+        
+        for i in range(1, len(data)):
+            if data[i] == current_byte and count < 255:
+                count += 1
+            else:
+                compressed.extend([count, current_byte])
+                current_byte = data[i]
+                count = 1
+        
+        # Agregar último run
+        compressed.extend([count, current_byte])
+        
+        return bytes(compressed)
+    
+    def _decompress_rle(self, data: bytes) -> bytes:
+        """
+        HU05: Descompresión RLE para validación
+        """
+        if not data or len(data) % 2 != 0:
+            return b''
+        
+        decompressed = []
+        for i in range(0, len(data), 2):
+            count = data[i]
+            byte_value = data[i + 1]
+            decompressed.extend([byte_value] * count)
+        
+        return bytes(decompressed)
+    
+    def _write_compressed_file_from_storage(self, output_file, progress_callback=None):
+        """
+        HU05: Escribe el archivo comprimido ensamblando bloques desde almacenamiento temporal
+        Los bloques se ensamblan en orden y se incluyen metadatos en el encabezado
+        """
+        if progress_callback:
+            if not progress_callback("Ensamblando archivo desde almacenamiento temporal...", 85, "🔧 Ensamblaje"):
+                self.cancel_requested = True
+                return False
+        
+        try:
+            if not self.temp_storage:
+                raise ValueError("No hay almacenamiento temporal inicializado")
+            
+            # HU05: Obtener metadata ordenada de bloques
+            ordered_blocks_metadata = self.temp_storage.get_ordered_blocks_metadata()
+            
+            with open(output_file, 'wb') as f:
+                # HU05: Escribir encabezado con metadatos de orden
+                header_info = {
+                    'format': 'PARZIP_V1',
+                    'total_blocks': len(ordered_blocks_metadata),
+                    'compression_algorithm': self.compression_algorithm,
+                    'block_order': [block['id'] for block in ordered_blocks_metadata]
+                }
+                
+                header_json = json.dumps(header_info).encode('utf-8')
+                header_size = len(header_json)
+                
+                # Escribir tamaño del encabezado (4 bytes) y luego el encabezado
+                f.write(header_size.to_bytes(4, byteorder='little'))
+                f.write(header_json)
+                
+                # HU05: Escribir metadatos de cada bloque en orden
+                for block_meta in ordered_blocks_metadata:
+                    # Escribir tamaño del bloque comprimido (4 bytes)
+                    f.write(block_meta['compressed_size'].to_bytes(4, byteorder='little'))
+                    # Escribir tamaño original (4 bytes)
+                    f.write(block_meta['original_size'].to_bytes(4, byteorder='little'))
+                
+                # HU05: Escribir datos comprimidos en orden
+                for i, block_meta in enumerate(ordered_blocks_metadata):
+                    if self.cancel_requested:
+                        return False
+                    
+                    # Recuperar datos del bloque desde almacenamiento temporal
+                    block_data = self.temp_storage.retrieve_block_data(block_meta['id'])
+                    f.write(block_data)
+                    
+                    # Progreso de escritura (85% a 98%)
+                    write_progress = 85 + (i / len(ordered_blocks_metadata)) * 13
+                    if progress_callback:
+                        if not progress_callback(f"Escribiendo bloque {i+1}/{len(ordered_blocks_metadata)}", 
+                                               write_progress, "💾 Escritura final"):
+                            self.cancel_requested = True
+                            return False
+            
+            if progress_callback:
+                progress_callback("Archivo comprimido exitosamente", 100, "✅ Completado")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error ensamblando archivo: {e}")
+            return False
     
     def _write_compressed_file(self, compressed_blocks, output_file, progress_callback=None):
         """Escribe el archivo comprimido"""

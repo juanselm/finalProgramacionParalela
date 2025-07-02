@@ -19,6 +19,7 @@ def main():
         print("📋 HU02: Configuración de número de hilos ✅")
         print("📋 HU03: Compresión paralela con progreso visual ✅")
         print("📋 HU04: División de archivos en bloques configurables ✅")
+        print("📋 HU05: Almacenamiento temporal y ensamblaje ordenado ✅")
         
         # Crear y ejecutar la aplicación
         app = MainWindow()
