@@ -3,6 +3,7 @@ Módulo de compresión paralela
 HU03: Compresión paralela con progreso visual
 HU04: División de archivos en bloques de tamaño fijo
 HU05: Almacenamiento temporal y ensamblaje de bloques comprimidos
+HU07: Manejo centralizado de errores
 """
 
 import threading
@@ -15,11 +16,21 @@ from queue import Queue
 from .block_manager import FileBlockManager
 from .temporary_storage import TemporaryBlockStorage, CompressionAlgorithm
 
+# Import error handler with fallback for compatibility
+try:
+    from gui.error_handler import ErrorHandler, ErrorType, ErrorSeverity
+except ImportError:
+    # Fallback cuando se ejecuta desde tests
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from gui.error_handler import ErrorHandler, ErrorType, ErrorSeverity
+
 
 class ParallelCompressor:
     """Clase para manejar la compresión paralela de archivos"""
     
-    def __init__(self, block_size: int = None):
+    def __init__(self, block_size: int = None, error_handler: ErrorHandler = None):
         self.is_compressing = False
         self.compression_results = []
         self.cancel_requested = False
@@ -29,6 +40,8 @@ class ParallelCompressor:
         # HU05: Almacenamiento temporal para bloques comprimidos
         self.temp_storage = None
         self.compression_algorithm = CompressionAlgorithm.ZLIB
+        # HU07: Manejo centralizado de errores
+        self.error_handler = error_handler
     
     def set_block_size(self, block_size: int):
         """
@@ -48,6 +61,27 @@ class ParallelCompressor:
         self.compression_algorithm = algorithm
     
     def get_compression_algorithm(self) -> CompressionAlgorithm:
+        """
+        HU05: Obtiene el algoritmo de compresión actual
+        """
+        return self.compression_algorithm
+    
+    def _handle_error(self, error: Exception, error_type: ErrorType, context: str = "", show_dialog: bool = False):
+        """
+        HU07: Método auxiliar para manejar errores de forma centralizada
+        """
+        if self.error_handler:
+            return self.error_handler.handle_error(
+                error=error,
+                error_type=error_type,
+                severity=ErrorSeverity.ERROR,
+                context=context,
+                show_dialog=show_dialog
+            )
+        else:
+            # Fallback si no hay error handler
+            print(f"Error en {context}: {str(error)}")
+            return None
         """
         HU05: Obtiene el algoritmo de compresión actual
         """
@@ -95,6 +129,8 @@ class ParallelCompressor:
             return success
             
         except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.COMPRESSION, "Compresión de archivo", show_dialog=False)
             # HU05: Limpiar almacenamiento temporal en caso de error
             if self.temp_storage:
                 self.temp_storage.cleanup()
@@ -131,6 +167,8 @@ class ParallelCompressor:
             return blocks
             
         except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.FILE_READ, "División de archivo en bloques", show_dialog=False)
             if progress_callback:
                 progress_callback(f"Error en división: {str(e)}", 0, "❌ Error")
             raise e
@@ -281,6 +319,8 @@ class ParallelCompressor:
                 time.sleep(0.005)
                 
             except Exception as e:
+                # HU07: Manejo centralizado de errores
+                self._handle_error(e, ErrorType.COMPRESSION, f"Compresión de bloque {block['id']}", show_dialog=False)
                 print(f"Error comprimiendo bloque {block['id']}: {e}")
                 if not self.cancel_requested:
                     # En caso de error, guardar bloque sin comprimir
@@ -407,6 +447,8 @@ class ParallelCompressor:
             return True
             
         except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.FILE_WRITE, "Ensamblaje de archivo final", show_dialog=False)
             print(f"Error ensamblando archivo: {e}")
             return False
     
@@ -456,6 +498,8 @@ class ParallelCompressor:
             return True
             
         except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.FILE_WRITE, "Escritura de archivo comprimido", show_dialog=False)
             print(f"Error escribiendo archivo: {e}")
             return False
     
@@ -507,6 +551,8 @@ class ParallelCompressor:
                 'improvement_expected': optimal_size != self.block_manager.block_size
             }
         except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.VALIDATION, "Cálculo de tamaño óptimo de bloque", show_dialog=False)
             return {'error': str(e)}
     
     def stop_compression(self):

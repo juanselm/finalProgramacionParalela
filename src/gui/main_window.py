@@ -9,10 +9,14 @@ from tkinter import filedialog, messagebox, ttk
 import os
 import multiprocessing
 from pathlib import Path
+from datetime import datetime
+from datetime import datetime
 
 # Importar módulos para HU03
 from gui.progress_dialog import ProgressDialog
 from compression.parallel_compressor import ParallelCompressor
+# HU07: Importar sistema de manejo de errores
+from gui.error_handler import ErrorHandler, ErrorType, ErrorSeverity, handle_error
 
 
 class MainWindow:
@@ -31,6 +35,9 @@ class MainWindow:
         self.max_threads = multiprocessing.cpu_count()
         self.num_threads = tk.IntVar(value=min(4, self.max_threads))
         
+        # HU07: Inicializar manejador de errores centralizado
+        self.error_handler = ErrorHandler(self.root, enable_logging=True)
+        
         self.setup_ui()
         
     def setup_ui(self):
@@ -43,6 +50,9 @@ class MainWindow:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
+        
+        # HU07: Agregar menú de errores
+        self.setup_menu()
         
         # Título
         title_label = ttk.Label(main_frame, text="🗂️ Compresor de Archivos Paralelo", 
@@ -156,6 +166,86 @@ class MainWindow:
                                       command=self.clear_selection)
         self.clear_button.pack(side=tk.LEFT)
         
+        # HU07: Panel de estado de errores
+        self.setup_error_status_panel(main_frame)
+        
+    def setup_menu(self):
+        """HU07: Configura el menú principal de la aplicación"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # Menú Archivo
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Archivo", menu=file_menu)
+        file_menu.add_command(label="Seleccionar archivo...", command=self.select_file)
+        file_menu.add_command(label="Elegir destino...", command=self.select_output_file)
+        file_menu.add_separator()
+        file_menu.add_command(label="Salir", command=self.root.quit)
+        
+        # Menú Herramientas
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Herramientas", menu=tools_menu)
+        tools_menu.add_command(label="Historial de errores", command=self.show_error_history)
+        tools_menu.add_command(label="Limpiar historial", command=self.clear_error_history)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Configuración de logging", command=self.show_logging_config)
+        
+        # Menú Ayuda
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Ayuda", menu=help_menu)
+        help_menu.add_command(label="Acerca de", command=self.show_about)
+    
+    def setup_error_status_panel(self, parent):
+        """HU07: Configura el panel de estado de errores"""
+        # Panel de estado en la parte inferior
+        status_frame = ttk.Frame(parent)
+        status_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0))
+        status_frame.columnconfigure(1, weight=1)
+        
+        # Icono de estado
+        self.error_status_icon = ttk.Label(status_frame, text="✅", font=("Arial", 12))
+        self.error_status_icon.grid(row=0, column=0, padx=(0, 5))
+        
+        # Mensaje de estado
+        self.error_status_message = ttk.Label(status_frame, text="Sistema listo - Sin errores", 
+                                            foreground="green", font=("Arial", 9))
+        self.error_status_message.grid(row=0, column=1, sticky=tk.W)
+        
+        # Botón para ver errores
+        self.view_errors_button = ttk.Button(status_frame, text="Ver Errores", 
+                                           command=self.show_error_history, state="disabled")
+        self.view_errors_button.grid(row=0, column=2, padx=(5, 0))
+        
+        # Registrar callback para actualizar estado
+        self.error_handler.register_callback(self.update_error_status)
+    
+    def update_error_status(self, error_info: dict):
+        """HU07: Actualiza el panel de estado cuando ocurre un error"""
+        error_count = len(self.error_handler.get_error_history())
+        severity = error_info['severity']
+        
+        # Actualizar icono y mensaje según severidad
+        if severity.value == 'critical':
+            icon = "🔴"
+            color = "red"
+            message = f"Error crítico - {error_count} errores registrados"
+        elif severity.value == 'error':
+            icon = "🟠"
+            color = "orange"
+            message = f"Error - {error_count} errores registrados"
+        elif severity.value == 'warning':
+            icon = "🟡"
+            color = "orange"
+            message = f"Advertencia - {error_count} errores registrados"
+        else:
+            icon = "🔵"
+            color = "blue"
+            message = f"Información - {error_count} registros"
+        
+        self.error_status_icon.config(text=icon)
+        self.error_status_message.config(text=message, foreground=color)
+        self.view_errors_button.config(state="normal")
+    
     def select_file(self):
         """Abre el diálogo para seleccionar un archivo"""
         try:
@@ -278,8 +368,8 @@ class MainWindow:
             # Crear y mostrar diálogo de progreso
             progress_dialog = ProgressDialog(self.root, config)
             
-            # Crear instancia del compresor
-            compressor = ParallelCompressor()
+            # Crear instancia del compresor con error handler
+            compressor = ParallelCompressor(error_handler=self.error_handler)
             
             # Crear función de compresión que usa la configuración
             def compress_with_config(input_file, output_file, progress_callback):
@@ -458,8 +548,49 @@ class MainWindow:
     def run(self):
         """Ejecuta la aplicación"""
         self.root.mainloop()
+    
+    def show_error_history(self):
+        """HU07: Muestra el historial detallado de errores"""
+        self.error_handler.show_error_summary()
+    
+    def clear_error_history(self):
+        """HU07: Limpia el historial de errores"""
+        result = messagebox.askyesno("Limpiar Historial", 
+                                   "¿Está seguro de que desea limpiar el historial de errores?")
+        if result:
+            self.error_handler.clear_history()
+            self.error_status_icon.config(text="✅")
+            self.error_status_message.config(text="Sistema listo - Sin errores", foreground="green")
+            self.view_errors_button.config(state="disabled")
+            messagebox.showinfo("Historial Limpiado", "El historial de errores ha sido limpiado.")
+    
+    def show_logging_config(self):
+        """HU07: Muestra configuración de logging"""
+        info = f"""Configuración de Logging:
 
+Estado: {'Habilitado' if self.error_handler.enable_logging else 'Deshabilitado'}
+Directorio de logs: logs/
+Archivo actual: compression_errors_{datetime.now().strftime('%Y%m%d')}.log
 
-if __name__ == "__main__":
-    app = MainWindow()
-    app.run()
+Los errores se registran automáticamente en el archivo de log
+y se muestran en la interfaz de usuario."""
+        
+        messagebox.showinfo("Configuración de Logging", info)
+    
+    def show_about(self):
+        """HU07: Muestra información sobre la aplicación"""
+        about_text = """Compresor de Archivos Paralelo
+        
+Versión: 1.0
+Características implementadas:
+✅ HU01: Interfaz gráfica para selección de archivos
+✅ HU02: Configuración de número de hilos
+✅ HU03: Compresión paralela con progreso visual
+✅ HU04: División de archivos en bloques configurables
+✅ HU05: Almacenamiento temporal y ensamblaje ordenado
+✅ HU06: Selección personalizada de destino
+✅ HU07: Sistema centralizado de manejo de errores
+
+Desarrollado como proyecto educativo."""
+        
+        messagebox.showinfo("Acerca de", about_text)

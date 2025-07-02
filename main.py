@@ -21,6 +21,7 @@ def main():
         print("📋 HU04: División de archivos en bloques configurables ✅")
         print("📋 HU05: Almacenamiento temporal y ensamblaje ordenado ✅")
         print("📋 HU06: Selección personalizada de destino con extensión .pz ✅")
+        print("📋 HU07: Sistema centralizado de manejo de errores ✅")
         
         # Crear y ejecutar la aplicación
         app = MainWindow()

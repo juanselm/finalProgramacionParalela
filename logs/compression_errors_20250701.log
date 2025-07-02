@@ -1,0 +1,8 @@
+2025-07-01 23:37:55,559 - ERROR - [Lectura de archivo] Archivo no encontrado | Context: Lectura de archivo inexistente | Severity: error
+2025-07-01 23:37:55,559 - ERROR - [Escritura de archivo] Sin permisos de escritura | Context: Escritura sin permisos | Severity: error
+2025-07-01 23:37:55,560 - ERROR - [Compresión] Datos corruptos | Context: Compresión de datos inválidos | Severity: error
+2025-07-01 23:37:55,560 - ERROR - [Memoria] Memoria insuficiente | Context: Procesamiento de archivo grande | Severity: error
+2025-07-01 23:37:55,561 - ERROR - [Error desconocido] Error desconocido | Context: Operación inesperada | Severity: error
+2025-07-01 23:37:55,910 - CRITICAL - [Validación] Error crítico de validación | Context: Demo de logging | Severity: critical
+2025-07-01 23:37:55,910 - ERROR - [Lectura de archivo] Error de lectura | Context: Demo de logging | Severity: error
+2025-07-01 23:37:55,910 - WARNING - [Compresión] Advertencia de rendimiento | Context: Demo de logging | Severity: warning
