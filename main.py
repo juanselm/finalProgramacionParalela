@@ -17,6 +17,8 @@ def main():
         print("🗂️ Iniciando Compresor de Archivos Paralelo...")
         print("📋 HU01: Interfaz gráfica para selección de archivos ✅")
         print("📋 HU02: Configuración de número de hilos ✅")
+        print("📋 HU03: Compresión paralela con progreso visual ✅")
+        print("📋 HU04: División de archivos en bloques configurables ✅")
         
         # Crear y ejecutar la aplicación
         app = MainWindow()
