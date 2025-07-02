@@ -162,6 +162,11 @@ class MainWindow:
                                          command=self.compress_file, state="disabled")
         self.compress_button.pack(side=tk.LEFT, padx=(0, 10))
         
+        # HU08: Botón de descompresión
+        self.decompress_button = ttk.Button(action_frame, text="📦 Descomprimir", 
+                                          command=self.decompress_file, state="disabled")
+        self.decompress_button.pack(side=tk.LEFT, padx=(0, 10))
+        
         self.clear_button = ttk.Button(action_frame, text="🗑️ Limpiar", 
                                       command=self.clear_selection)
         self.clear_button.pack(side=tk.LEFT)
@@ -179,6 +184,9 @@ class MainWindow:
         menubar.add_cascade(label="Archivo", menu=file_menu)
         file_menu.add_command(label="Seleccionar archivo...", command=self.select_file)
         file_menu.add_command(label="Elegir destino...", command=self.select_output_file)
+        file_menu.add_separator()
+        file_menu.add_command(label="Comprimir archivo", command=self.compress_file)
+        file_menu.add_command(label="Descomprimir archivo", command=self.decompress_file)  # HU08
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.root.quit)
         
@@ -247,12 +255,13 @@ class MainWindow:
         self.view_errors_button.config(state="normal")
     
     def select_file(self):
-        """Abre el diálogo para seleccionar un archivo"""
+        """Abre el diálogo para seleccionar un archivo (para comprimir o descomprimir)"""
         try:
             file_path = filedialog.askopenfilename(
-                title="Seleccionar archivo para comprimir",
+                title="Seleccionar archivo para comprimir o descomprimir",
                 filetypes=[
                     ("Todos los archivos", "*.*"),
+                    ("Archivos comprimidos", "*.pz"),
                     ("Archivos de texto", "*.txt"),
                     ("Archivos de imagen", "*.jpg;*.png;*.gif"),
                     ("Archivos de documento", "*.pdf;*.doc;*.docx")
@@ -264,11 +273,21 @@ class MainWindow:
                     self.selected_file_path.set(file_path)
                     self.display_file_info(file_path)
                     
-                    # HU06: Habilitar botón de selección de destino
-                    self.select_dest_button.config(state="normal")
+                    # HU08: Manejar diferentes tipos de archivo
+                    is_pz_file = file_path.lower().endswith('.pz')
                     
-                    # HU06: Sugerir nombre de destino automáticamente
-                    self.suggest_output_filename(file_path)
+                    if is_pz_file:
+                        # Archivo .pz - preparar para descompresión
+                        self.select_dest_button.config(state="disabled")
+                        self.output_file_path.set("")  # Limpiar destino
+                        self.suggest_decompression_output(file_path)
+                    else:
+                        # Archivo normal - preparar para compresión
+                        self.select_dest_button.config(state="normal")
+                        self.suggest_output_filename(file_path)
+                    
+                    # Actualizar estado de botones
+                    self.update_compression_button_state()
                 else:
                     messagebox.showerror("Error", "El archivo seleccionado no es válido o no se puede acceder a él.")
                     
@@ -312,19 +331,29 @@ class MainWindow:
             # Formatear el tamaño del archivo
             size_str = self.format_file_size(file_size)
             
+            # HU08: Determinar tipo de archivo y mensaje apropiado
+            is_pz_file = file_path.lower().endswith('.pz')
+            
             # Actualizar labels
             self.name_label.config(text=path.name)
             self.size_label.config(text=size_str)
             self.location_label.config(text=str(path.parent))
-            self.status_label.config(text="✅ Archivo válido y listo para comprimir", 
-                                   foreground="green")
-              # Guardar información del archivo
+            
+            if is_pz_file:
+                self.status_label.config(text="📦 Archivo comprimido .pz listo para descomprimir", 
+                                       foreground="blue")
+            else:
+                self.status_label.config(text="✅ Archivo válido y listo para comprimir", 
+                                       foreground="green")
+            
+            # Guardar información del archivo
             self.file_info = {
                 'path': file_path,
                 'name': path.name,
                 'size': file_size,
                 'size_formatted': size_str,
-                'directory': str(path.parent)
+                'directory': str(path.parent),
+                'is_compressed': is_pz_file
             }
             
         except Exception as e:
@@ -387,6 +416,57 @@ class MainWindow:
         except Exception as e:
             messagebox.showerror("Error", f"Error iniciando compresión: {str(e)}")
     
+    def decompress_file(self):
+        """HU08: Inicia el proceso de descompresión paralela con interfaz de progreso"""
+        if not self.file_info:
+            messagebox.showerror("Error", "No hay archivo seleccionado para descomprimir.")
+            return
+        
+        input_file = self.file_info.get('path', '')
+        if not input_file.lower().endswith('.pz'):
+            messagebox.showerror("Error", "Solo se pueden descomprimir archivos con extensión .pz")
+            return
+        
+        # Verificar que hay archivo de salida sugerido
+        output_file = self.output_file_path.get()
+        if not output_file:
+            messagebox.showerror("Error", "No se pudo determinar el archivo de destino para la descompresión.")
+            return
+        
+        # Verificar si el archivo de salida ya existe
+        if os.path.exists(output_file):
+            result = messagebox.askyesno("Archivo Existente", 
+                                       f"El archivo '{output_file}' ya existe.\n¿Desea sobrescribirlo?")
+            if not result:
+                return
+        
+        try:
+            # Obtener configuración (para número de hilos)
+            config = self.get_compression_config()
+            config['output_path'] = output_file
+            config['operation'] = 'decompress'  # Marcar como operación de descompresión
+            
+            # Crear y mostrar diálogo de progreso
+            progress_dialog = ProgressDialog(self.root, config)
+            
+            # Crear instancia del compresor con error handler
+            compressor = ParallelCompressor(error_handler=self.error_handler)
+            
+            # Crear función de descompresión
+            def decompress_with_config(input_file, output_file, progress_callback):
+                return compressor.decompress_file_with_threads(
+                    input_file=input_file,
+                    output_file=output_file,
+                    num_threads=config['threads'],
+                    progress_callback=progress_callback
+                )
+            
+            # Iniciar descompresión
+            progress_dialog.start_compression(decompress_with_config)  # Reutilizar el mismo método
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error iniciando descompresión: {str(e)}")
+    
     def clear_selection(self):
         """Limpia la selección actual"""
         self.selected_file_path.set("")
@@ -396,6 +476,7 @@ class MainWindow:
         self.location_label.config(text="")
         self.status_label.config(text="Ningún archivo seleccionado", foreground="gray")
         self.compress_button.config(state="disabled")
+        self.decompress_button.config(state="disabled")  # HU08: Deshabilitar descompresión
         self.select_dest_button.config(state="disabled")  # HU06: Deshabilitar destino
         self.file_info = {}
     
@@ -524,11 +605,27 @@ class MainWindow:
             return False
     
     def update_compression_button_state(self):
-        """HU06: Actualiza el estado del botón de compresión según las selecciones"""
-        if self.file_info and self.output_file_path.get():
-            self.compress_button.config(state="normal")
+        """HU06/HU08: Actualiza el estado de los botones según las selecciones y tipo de archivo"""
+        if self.file_info:
+            file_path = self.file_info.get('path', '')
+            is_pz_file = file_path.lower().endswith('.pz')
+            
+            if is_pz_file:
+                # Archivo .pz seleccionado - habilitar descompresión
+                self.compress_button.config(state="disabled")
+                self.decompress_button.config(state="normal")
+                # No necesita archivo de salida para descompresión (se sugiere automáticamente)
+            else:
+                # Archivo normal seleccionado - habilitar compresión si hay destino
+                self.decompress_button.config(state="disabled")
+                if self.output_file_path.get():
+                    self.compress_button.config(state="normal")
+                else:
+                    self.compress_button.config(state="disabled")
         else:
+            # Sin archivo seleccionado - deshabilitar ambos
             self.compress_button.config(state="disabled")
+            self.decompress_button.config(state="disabled")
     
     def suggest_output_filename(self, input_path):
         """HU06: Sugiere automáticamente un nombre de archivo de destino"""
@@ -544,6 +641,44 @@ class MainWindow:
             
         except Exception as e:
             print(f"Error sugiriendo nombre de archivo: {e}")
+    
+    def suggest_decompression_output(self, input_path):
+        """HU08: Sugiere automáticamente un nombre de archivo para descompresión"""
+        try:
+            pz_path = Path(input_path)
+            # Remover _comprimido si existe y la extensión .pz
+            stem = pz_path.stem
+            if stem.endswith('_comprimido'):
+                suggested_name = stem[:-11]  # Remover '_comprimido'
+            else:
+                suggested_name = f"{stem}_descomprimido"
+            
+            # Intentar determinar extensión original del header
+            try:
+                # Leer header para obtener nombre original
+                with open(input_path, 'rb') as f:
+                    header_size_bytes = f.read(4)
+                    if len(header_size_bytes) == 4:
+                        header_size = int.from_bytes(header_size_bytes, byteorder='little')
+                        header_json = f.read(header_size).decode('utf-8')
+                        import json
+                        header_info = json.loads(header_json)
+                        original_filename = header_info.get('original_filename', suggested_name)
+                        suggested_name = original_filename
+            except:
+                # Si no se puede leer el header, usar nombre sugerido
+                pass
+            
+            suggested_full_path = pz_path.parent / suggested_name
+            self.output_file_path.set(str(suggested_full_path))
+            
+        except Exception as e:
+            print(f"Error sugiriendo nombre de archivo de descompresión: {e}")
+            # Fallback a nombre simple
+            pz_path = Path(input_path)
+            suggested_name = f"{pz_path.stem}_descomprimido"
+            suggested_full_path = pz_path.parent / suggested_name
+            self.output_file_path.set(str(suggested_full_path))
     
     def run(self):
         """Ejecuta la aplicación"""

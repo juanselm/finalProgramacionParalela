@@ -42,6 +42,8 @@ class ParallelCompressor:
         self.compression_algorithm = CompressionAlgorithm.ZLIB
         # HU07: Manejo centralizado de errores
         self.error_handler = error_handler
+        # HU08: Estado de descompresión
+        self.is_decompressing = False
     
     def set_block_size(self, block_size: int):
         """
@@ -118,7 +120,7 @@ class ParallelCompressor:
                 return False
             
             # HU05: Escribir archivo comprimido con ensamblaje de bloques temporales
-            success = self._write_compressed_file_from_storage(output_file, progress_callback)
+            success = self._write_compressed_file_from_storage(input_file, output_file, progress_callback)
             
             # HU05: Limpiar almacenamiento temporal
             if self.temp_storage:
@@ -384,9 +386,9 @@ class ParallelCompressor:
         
         return bytes(decompressed)
     
-    def _write_compressed_file_from_storage(self, output_file, progress_callback=None):
+    def _write_compressed_file_from_storage(self, input_file, output_file, progress_callback=None):
         """
-        HU05: Escribe el archivo comprimido ensamblando bloques desde almacenamiento temporal
+        HU05/HU08: Escribe el archivo comprimido ensamblando bloques desde almacenamiento temporal
         Los bloques se ensamblan en orden y se incluyen metadatos en el encabezado
         """
         if progress_callback:
@@ -402,11 +404,17 @@ class ParallelCompressor:
             ordered_blocks_metadata = self.temp_storage.get_ordered_blocks_metadata()
             
             with open(output_file, 'wb') as f:
-                # HU05: Escribir encabezado con metadatos de orden
+                # HU05/HU08: Escribir encabezado con metadatos completos
+                original_filename = os.path.basename(input_file) if input_file else "unknown"
+                original_size = sum(block['original_size'] for block in ordered_blocks_metadata)
+                
                 header_info = {
                     'format': 'PARZIP_V1',
-                    'total_blocks': len(ordered_blocks_metadata),
-                    'compression_algorithm': self.compression_algorithm,
+                    'original_filename': original_filename,  # HU08: Campo requerido para descompresión
+                    'original_size': original_size,  # HU08: Campo requerido para descompresión
+                    'block_count': len(ordered_blocks_metadata),  # HU08: Campo requerido para descompresión
+                    'total_blocks': len(ordered_blocks_metadata),  # Compatibilidad
+                    'compression_algorithm': self.compression_algorithm.value if hasattr(self.compression_algorithm, 'value') else str(self.compression_algorithm),  # HU08: Campo requerido
                     'block_order': [block['id'] for block in ordered_blocks_metadata]
                 }
                 
@@ -503,6 +511,393 @@ class ParallelCompressor:
             print(f"Error escribiendo archivo: {e}")
             return False
     
+    def decompress_file(self, input_file, output_file, progress_callback=None):
+        """Descomprime un archivo usando múltiples hilos (4 hilos por defecto)"""
+        return self.decompress_file_with_threads(input_file, output_file, 4, progress_callback)
+    
+    def decompress_file_with_threads(self, input_file: str, output_file: str, num_threads: int = None, progress_callback=None):
+        """
+        HU08: Descomprime un archivo .pz usando múltiples hilos
+        
+        Args:
+            input_file: Ruta del archivo .pz a descomprimir
+            output_file: Ruta donde guardar el archivo descomprimido
+            num_threads: Número de hilos a usar (por defecto se calcula automáticamente)
+            progress_callback: Función callback para reportar progreso
+            
+        Returns:
+            bool: True si la descompresión fue exitosa, False en caso contrario
+        """
+        if self.is_decompressing:
+            raise RuntimeError("Ya hay una descompresión en curso")
+        
+        try:
+            self.is_decompressing = True
+            self.cancel_requested = False
+            
+            if progress_callback:
+                progress_callback("Iniciando descompresión...", 0, "🚀 Inicializando")
+            
+            # Validar archivo de entrada
+            if not os.path.exists(input_file):
+                raise FileNotFoundError(f"El archivo {input_file} no existe")
+            
+            if not input_file.lower().endswith('.pz'):
+                raise ValueError("El archivo debe tener extensión .pz")
+            
+            # Leer información del archivo comprimido
+            file_info = self._read_compressed_file_header(input_file, progress_callback)
+            
+            if progress_callback:
+                progress_callback("Leyendo bloques comprimidos...", 10, "📖 Lectura")
+            
+            # Leer bloques comprimidos
+            compressed_blocks = self._read_compressed_blocks(input_file, file_info, progress_callback)
+            
+            if progress_callback:
+                progress_callback("Descomprimiendo bloques en paralelo...", 25, "🔄 Descompresión")
+            
+            # Descomprimir bloques en paralelo
+            if num_threads is None:
+                num_threads = min(4, len(compressed_blocks), os.cpu_count() or 1)
+            
+            decompressed_blocks = self._decompress_blocks_parallel(compressed_blocks, num_threads, progress_callback)
+            
+            if progress_callback:
+                progress_callback("Ensamblando archivo final...", 85, "🔧 Ensamblaje")
+            
+            # Ensamblar archivo final
+            success = self._write_decompressed_file(decompressed_blocks, output_file, file_info, progress_callback)
+            
+            if success and progress_callback:
+                original_size = file_info.get('original_size', 0)
+                compressed_size = os.path.getsize(input_file)
+                progress_callback("Descompresión completada exitosamente", 100, "✅ Completado")
+            
+            return success
+            
+        except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.DECOMPRESSION, "Descompresión de archivo", show_dialog=False)
+            if progress_callback:
+                progress_callback(f"Error en descompresión: {str(e)}", 0, "❌ Error")
+            return False
+        finally:
+            self.is_decompressing = False
+    
+    def _read_compressed_file_header(self, file_path: str, progress_callback=None):
+        """
+        HU08: Lee el encabezado de un archivo .pz comprimido
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                # Leer tamaño del encabezado (4 bytes)
+                header_size_bytes = f.read(4)
+                if len(header_size_bytes) < 4:
+                    raise ValueError("Archivo comprimido inválido: encabezado incompleto")
+                
+                header_size = int.from_bytes(header_size_bytes, byteorder='little')
+                
+                if header_size <= 0 or header_size > 1024 * 1024:  # Máximo 1MB para el header
+                    raise ValueError("Archivo comprimido inválido: tamaño de encabezado incorrecto")
+                
+                # Leer y deserializar encabezado
+                header_json = f.read(header_size)
+                if len(header_json) < header_size:
+                    raise ValueError("Archivo comprimido inválido: encabezado truncado")
+                
+                header_info = json.loads(header_json.decode('utf-8'))
+                
+                # Validar estructura del encabezado
+                required_fields = ['original_filename', 'original_size', 'block_count', 'compression_algorithm']
+                for field in required_fields:
+                    if field not in header_info:
+                        raise ValueError(f"Archivo comprimido inválido: campo '{field}' faltante en encabezado")
+                
+                return header_info
+                
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Archivo comprimido inválido: error en JSON del encabezado - {str(e)}")
+        except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.FILE_READ, "Lectura de encabezado de archivo comprimido", show_dialog=False)
+            raise
+    
+    def _read_compressed_blocks(self, file_path: str, file_info: dict, progress_callback=None):
+        """
+        HU08: Lee los bloques comprimidos de un archivo .pz
+        """
+        try:
+            compressed_blocks = []
+            
+            with open(file_path, 'rb') as f:
+                # Saltar encabezado
+                header_size_bytes = f.read(4)
+                header_size = int.from_bytes(header_size_bytes, byteorder='little')
+                f.read(header_size)  # Saltar JSON del encabezado
+                
+                block_count = file_info['block_count']
+                
+                # Leer metadatos de bloques
+                block_metadata = []
+                for i in range(block_count):
+                    # Leer tamaño comprimido (4 bytes)
+                    compressed_size_bytes = f.read(4)
+                    if len(compressed_size_bytes) < 4:
+                        raise ValueError(f"Archivo comprimido inválido: metadatos de bloque {i} incompletos")
+                    
+                    compressed_size = int.from_bytes(compressed_size_bytes, byteorder='little')
+                    
+                    # Leer tamaño original (4 bytes)
+                    original_size_bytes = f.read(4)
+                    if len(original_size_bytes) < 4:
+                        raise ValueError(f"Archivo comprimido inválido: metadatos de bloque {i} incompletos")
+                    
+                    original_size = int.from_bytes(original_size_bytes, byteorder='little')
+                    
+                    block_metadata.append({
+                        'id': i,
+                        'compressed_size': compressed_size,
+                        'original_size': original_size
+                    })
+                
+                # Leer datos comprimidos de cada bloque
+                for i, meta in enumerate(block_metadata):
+                    if self.cancel_requested:
+                        break
+                    
+                    compressed_data = f.read(meta['compressed_size'])
+                    if len(compressed_data) < meta['compressed_size']:
+                        raise ValueError(f"Archivo comprimido inválido: datos de bloque {i} incompletos")
+                    
+                    compressed_blocks.append({
+                        'id': meta['id'],
+                        'compressed_data': compressed_data,
+                        'compressed_size': meta['compressed_size'],
+                        'original_size': meta['original_size']
+                    })
+                    
+                    # Progreso de lectura (10% a 25%)
+                    read_progress = 10 + (i / len(block_metadata)) * 15
+                    if progress_callback:
+                        if not progress_callback(f"Leyendo bloque {i+1}/{len(block_metadata)}", 
+                                               read_progress, "📖 Lectura"):
+                            self.cancel_requested = True
+                            break
+            
+            return compressed_blocks
+            
+        except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.FILE_READ, "Lectura de bloques comprimidos", show_dialog=False)
+            raise
+    
+    def _decompress_blocks_parallel(self, compressed_blocks: list, num_threads: int, progress_callback=None):
+        """
+        HU08: Descomprime bloques en paralelo usando múltiples hilos
+        """
+        try:
+            # Inicializar array de resultados
+            decompressed_blocks = [None] * len(compressed_blocks)
+            
+            # Cola para reportar progreso
+            progress_queue = Queue()
+            
+            # Dividir bloques entre hilos
+            blocks_per_thread = len(compressed_blocks) // num_threads
+            remainder = len(compressed_blocks) % num_threads
+            
+            threads = []
+            start_idx = 0
+            
+            for thread_id in range(num_threads):
+                # Calcular cantidad de bloques para este hilo
+                thread_blocks = blocks_per_thread + (1 if thread_id < remainder else 0)
+                end_idx = start_idx + thread_blocks
+                
+                if thread_blocks > 0:
+                    thread_blocks_list = compressed_blocks[start_idx:end_idx]
+                    
+                    # Crear y ejecutar hilo
+                    thread = threading.Thread(
+                        target=self._decompress_thread_worker,
+                        args=(thread_blocks_list, decompressed_blocks, start_idx, progress_queue, thread_id)
+                    )
+                    threads.append(thread)
+                    thread.start()
+                
+                start_idx = end_idx
+            
+            # Monitorear progreso
+            completed_blocks = 0
+            total_blocks = len(compressed_blocks)
+            
+            while completed_blocks < total_blocks and not self.cancel_requested:
+                try:
+                    progress_info = progress_queue.get(timeout=0.1)
+                    completed_blocks += 1
+                    
+                    # Progreso de descompresión (25% a 85%)
+                    decompress_progress = 25 + (completed_blocks / total_blocks) * 60
+                    
+                    if progress_callback:
+                        if not progress_callback(
+                            f"Descomprimiendo bloque {completed_blocks}/{total_blocks}", 
+                            decompress_progress, 
+                            f"🔄 Hilo {progress_info.get('thread_id', '?')}"
+                        ):
+                            self.cancel_requested = True
+                            break
+                    
+                except:
+                    # Timeout - continuar monitoreando
+                    pass
+            
+            # Esperar a que terminen todos los hilos
+            for thread in threads:
+                thread.join()
+            
+            if self.cancel_requested:
+                return None
+            
+            return decompressed_blocks
+            
+        except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.DECOMPRESSION, "Descompresión paralela de bloques", show_dialog=False)
+            raise
+    
+    def _decompress_thread_worker(self, compressed_blocks: list, result_array: list, start_idx: int, progress_queue: Queue, thread_id: int):
+        """
+        HU08: Worker que descomprime bloques en un hilo
+        """
+        for i, block in enumerate(compressed_blocks):
+            if self.cancel_requested:
+                break
+            
+            try:
+                # Descomprimir datos según el algoritmo usado
+                compressed_data = block['compressed_data']
+                
+                # Por ahora asumimos zlib, pero podríamos detectar el algoritmo del header
+                if len(compressed_data) == block['original_size']:
+                    # Bloque no estaba comprimido (posible error durante compresión)
+                    decompressed_data = compressed_data
+                else:
+                    # Intentar descompresión zlib
+                    try:
+                        decompressed_data = zlib.decompress(compressed_data)
+                    except zlib.error:
+                        # Si falla zlib, intentar RLE
+                        decompressed_data = self._decompress_rle(compressed_data)
+                
+                # Verificar tamaño
+                if len(decompressed_data) != block['original_size']:
+                    raise ValueError(f"Tamaño descomprimido incorrecto para bloque {block['id']}")
+                
+                # Almacenar resultado
+                result_array[start_idx + i] = {
+                    'id': block['id'],
+                    'data': decompressed_data,
+                    'original_size': block['original_size'],
+                    'thread_id': thread_id
+                }
+                
+                # Reportar progreso
+                progress_queue.put({
+                    'block_id': block['id'],
+                    'thread_id': thread_id,
+                    'decompressed_size': len(decompressed_data)
+                })
+                
+            except Exception as e:
+                # HU07: Manejo centralizado de errores
+                self._handle_error(e, ErrorType.DECOMPRESSION, f"Descompresión de bloque {block['id']}", show_dialog=False)
+                print(f"Error descomprimiendo bloque {block['id']}: {e}")
+                
+                # En caso de error, marcar bloque como fallido
+                result_array[start_idx + i] = {
+                    'id': block['id'],
+                    'data': None,
+                    'error': str(e),
+                    'thread_id': thread_id
+                }
+    
+    def _decompress_rle(self, compressed_data: bytes) -> bytes:
+        """
+        HU08: Descomprime datos usando Run-Length Encoding (RLE)
+        """
+        try:
+            decompressed = bytearray()
+            i = 0
+            
+            while i < len(compressed_data):
+                if i + 1 >= len(compressed_data):
+                    break
+                
+                count = compressed_data[i]
+                value = compressed_data[i + 1]
+                
+                # Añadir bytes descomprimidos
+                decompressed.extend([value] * count)
+                i += 2
+            
+            return bytes(decompressed)
+            
+        except Exception as e:
+            raise ValueError(f"Error en descompresión RLE: {str(e)}")
+    
+    def _write_decompressed_file(self, decompressed_blocks: list, output_file: str, file_info: dict, progress_callback=None):
+        """
+        HU08: Escribe el archivo descomprimido ensamblando los bloques en orden
+        """
+        try:
+            # Verificar que todos los bloques se descomprimieron correctamente
+            for i, block in enumerate(decompressed_blocks):
+                if block is None or block.get('data') is None:
+                    error_msg = block.get('error', 'Desconocido') if block else 'Bloque faltante'
+                    raise ValueError(f"Error en bloque {i}: {error_msg}")
+            
+            # Crear directorio de destino si no existe
+            output_dir = os.path.dirname(output_file)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            
+            # Escribir archivo descomprimido
+            with open(output_file, 'wb') as f:
+                total_blocks = len(decompressed_blocks)
+                
+                for i, block in enumerate(decompressed_blocks):
+                    if self.cancel_requested:
+                        return False
+                    
+                    f.write(block['data'])
+                    
+                    # Progreso de escritura (85% a 98%)
+                    write_progress = 85 + (i / total_blocks) * 13
+                    if progress_callback:
+                        if not progress_callback(f"Escribiendo bloque {i+1}/{total_blocks}", 
+                                               write_progress, "💾 Escritura"):
+                            self.cancel_requested = True
+                            return False
+            
+            # Verificar tamaño final
+            actual_size = os.path.getsize(output_file)
+            expected_size = file_info.get('original_size', 0)
+            
+            if actual_size != expected_size:
+                raise ValueError(f"Tamaño del archivo descomprimido incorrecto: {actual_size} vs {expected_size} esperados")
+            
+            if progress_callback:
+                progress_callback("Archivo descomprimido exitosamente", 100, "✅ Completado")
+            
+            return True
+            
+        except Exception as e:
+            # HU07: Manejo centralizado de errores
+            self._handle_error(e, ErrorType.FILE_WRITE, "Escritura de archivo descomprimido", show_dialog=False)
+            raise
+    
     # Métodos de compatibilidad para mantener funcionalidad existente
     def _split_file_into_blocks(self, file_path, progress_callback=None):
         """Método de compatibilidad - redirige al método mejorado"""
@@ -559,3 +954,10 @@ class ParallelCompressor:
         """Detiene la compresión en curso"""
         self.cancel_requested = True
         self.is_compressing = False
+    
+    def stop_decompression(self):
+        """
+        HU08: Detiene la descompresión en curso
+        """
+        self.cancel_requested = True
+        self.is_decompressing = False

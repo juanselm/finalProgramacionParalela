@@ -22,6 +22,7 @@ def main():
         print("📋 HU05: Almacenamiento temporal y ensamblaje ordenado ✅")
         print("📋 HU06: Selección personalizada de destino con extensión .pz ✅")
         print("📋 HU07: Sistema centralizado de manejo de errores ✅")
+        print("📋 HU08: Descompresión de archivos .pz con recuperación idéntica ✅")
         
         # Crear y ejecutar la aplicación
         app = MainWindow()

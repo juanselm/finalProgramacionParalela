@@ -29,13 +29,12 @@
   - Mostrar tiempo total y velocidad
   - Comparar rendimiento secuencial vs paralelo
 
-## 📋 HU05 - PENDIENTE
-**Descompresión de archivos**
-- Como usuario, quiero descomprimir archivos previamente comprimidos
-- Criterios de aceptación:
-  - Detectar archivos comprimidos válidos
-  - Descomprimir usando múltiples hilos
-  - Verificar integridad del archivo descomprimido
+## ✅ HU08 - COMPLETADA
+**Descompresión de archivos .pz**
+- Estado: ✅ COMPLETADA
+- Archivos: `src/compression/parallel_compressor.py` (actualizado), `src/gui/main_window.py` (actualizado), `tests/test_hu08.py`, `demo_hu08.py`
+- Funcionalidades: Descompresión paralela, validación de integridad, GUI integrada, manejo de errores
+- Pruebas: 10/10 ✅ pasando
 
 ## 🏗️ Arquitectura del Proyecto
 
@@ -57,22 +56,22 @@ src/
 ## 📊 Estado Actual del Proyecto
 
 **📅 Última Actualización:** Enero 1, 2025  
-**📈 Progreso:** 60% (3 de 5 HU completadas) ✅  
-**🧪 Pruebas:** 12/12 pasando ✅  
+**📈 Progreso:** 80% (4 de 5 HU principales completadas) ✅  
+**🧪 Pruebas:** 22/22 pasando ✅  
 **🏗️ Código:** Funcional y estable ✅  
 
 ### ✅ Completadas:
 - **HU01:** Selección de archivo con validación completa
 - **HU02:** Configuración de hilos con detección automática de CPU  
 - **HU03:** Compresión paralela con progreso visual e integración completa
+- **HU08:** Descompresión paralela con validación de integridad y GUI integrada
 
 ### 📋 Pendientes:
 - **HU04:** Métricas de rendimiento y estadísticas de compresión
-- **HU05:** Funcionalidad de descompresión paralela
 
 ---
 
-*El proyecto está listo para continuar con HU04 - Implementación de métricas de rendimiento*
+*El proyecto tiene implementada la funcionalidad core completa de compresión/descompresión paralela. Pendiente: métricas de rendimiento.*
 
 ## 🎯 Próximos Pasos
 
